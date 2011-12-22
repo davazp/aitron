@@ -1,0 +1,12 @@
+#!/usr/bin/sbcl --script
+;; -*- Lisp -*-
+
+(defmacro ignore-output (&body body)
+  `(let ((*standard-output* (make-broadcast-stream)))
+     ,@body))
+
+(ignore-output
+  (compile-file "boa")
+  (load "boa"))
+
+(boa:main)

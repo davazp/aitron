@@ -125,6 +125,7 @@ prepare_player (player_t * player, int i, int j)
   player->fdread  = fdopen (pstdout[0], "r");
   player->i = i;
   player->j = j;
+  map[i][j] = 1;
   write_cords (player, i, j);
 }
 
@@ -409,16 +410,13 @@ main (int argc, char * argv[])
           read_cords (player1, &p[0][0], &p[0][1]);
           read_cords (player2, &p[1][0], &p[1][1]);
           /* Comprueba si alguien ha perdido */
-          if (p[0][0]==p[1][0] && p[0][1]==p[1][1])
+          finishp |= lossp (player1, p[0][0], p[0][1]);
+          finishp |= lossp (player2, p[1][0], p[1][1]);
+          if (!finishp && p[0][0]==p[1][0] && p[0][1]==p[1][1])
             {
               player1->loses++;
               player2->loses++;
               finishp = 1;
-            }
-          else
-            {
-              finishp |= lossp (player1, p[0][0], p[0][1]);
-              finishp |= lossp (player2, p[1][0], p[1][1]);
             }
           /* Actualiza el mapa con los movimientos */
           move (player1, p[0][0], p[0][1]);

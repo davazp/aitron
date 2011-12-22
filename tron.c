@@ -21,11 +21,13 @@ SDL_Surface * screen;
 int map[N][N];
 
 
-/* Configuracion */
+/* Configuracion y estadisticas */
 unsigned int delay = 100;
 int graphicsp = 1;
 int plays = 1;
+
 int current_play;
+int turns = 0;
 
 /* Dibuja un cuadrado en pantalla. */
 void
@@ -199,12 +201,12 @@ random_position (int *i, int*j)
 }
 
 void
-walls (int n)
+walls (int n, player_t * p1, player_t * p2)
 {
   Uint32 color;
   if (graphicsp)
     color = SDL_MapRGB(screen->format, 50, 50, 50);
-  while(n-->0)
+  while(n>0)
     {
       int ii,jj;
       int i[5],j[5];
@@ -215,8 +217,14 @@ walls (int n)
       random_position (&i[4], &j[4]);
       ii = (i[0] + i[1] + i[2] + i[3] + i[4]) / 5;
       jj = (j[0] + j[1] + j[2] + j[3] + j[4]) / 5;
-      draw_point (ii, jj, color);
-      map[ii][jj]=1;
+      if (!map[ii][jj])
+        {
+          draw_point (ii, jj, color);
+          map[ii][jj]=1;
+          write_cords (p1, ii, jj);
+          write_cords (p2, ii, jj);
+          n--;
+        }
     }
 }
 
@@ -285,8 +293,6 @@ main (int argc, char * argv[])
       if (graphicsp)
         SDL_FillRect( screen, NULL, 0 );
 
-      walls(100);
-
       do {
         random_position (&p[0][0], &p[0][1]);
       } while (map[ p[0][0] ][ p[0][1] ]);
@@ -298,6 +304,8 @@ main (int argc, char * argv[])
       prepare_player (player2, p[1][0], p[1][1]);
       write_cords (player1, p[1][0], p[1][1]);
       write_cords (player2, p[0][0], p[0][1]);
+
+      walls(100, player1, player2);
 
       /* Bucle principal */
       finishp=0;
@@ -312,6 +320,7 @@ main (int argc, char * argv[])
           /* Actualiza el mapa con los movimientos */
           finishp |= move (player1, p[0][0], p[0][1]);
           finishp |= move (player2, p[1][0], p[1][1]);
+          turns++;
           /* Informa del ultimo movimiento de cada bot al otro */
           write_cords (player1, p[1][0], p[1][1]);
           write_cords (player2, p[0][0], p[0][1]);
@@ -322,6 +331,7 @@ main (int argc, char * argv[])
                  usuario lo haya solicitado. */
               while( SDL_PollEvent( &event ) ){
                 if (event.type == SDL_QUIT)
+                  plays = current_play;
                   finishp = 1;
               }
               SDL_Delay (delay);
@@ -334,7 +344,8 @@ main (int argc, char * argv[])
   printf ("Resumen:\n");
   printf ("    %s: %d/%d\n", player1->name, plays - player1->loses, plays);
   printf ("    %s: %d/%d\n", player2->name, plays - player2->loses, plays);
-
+  printf ("\n");
+  printf ("Un total de %d turnos, %f turnos de media por partida.\n", turns, (float)turns/plays);
   close_player (player1);
   close_player (player2);
 

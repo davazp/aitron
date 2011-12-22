@@ -14,6 +14,11 @@
 (defvar *cx* (read))
 (defvar *cy* (read))
 
+;;; Lee los obstaculos
+(loop repeat 100
+      for (i j) = (list (read) (read))
+      do (setf(aref *map* i j) t))
+
 (defun validp (x y)
   (and (<= 0 x (1- N))
        (<= 0 y (1- N))
@@ -42,7 +47,7 @@
 
 (defun list-of-movements ()
   (let ((movs (list '(1 0) '(0 1) '(-1 0) '(0 -1))))
-    (sort (scramble movs) #'> :key #'movement-value)))
+    (sort (append (scramble movs) '((0 0))) #'> :key #'movement-value)))
 
 (defun move ()
   (loop for (di dj) in (list-of-movements)

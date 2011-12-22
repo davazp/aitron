@@ -27,7 +27,7 @@
 ;;; Estrategia: moverse donde sea pero chocarse si es posible.
 
 (defun move-to-first-free-cell ()
-  (loop for (di dj) in (append '((1 0) (0 1) (-1 0) (0 -1) '((0 0))))
+  (loop for (di dj) in '((1 0) (0 1) (-1 0) (0 -1) (0 0))
         until (validp (+ *x* dj) (+ *y* di))
         finally
            (progn

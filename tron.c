@@ -35,10 +35,7 @@ void
 draw_point (int i, int j, int color)
 {
   SDL_Rect rect;
-
-  if (!graphicsp)
-    return;
-
+  if (!graphicsp) return;
   rect.x = j * POINTSIZE;
   rect.y = i * POINTSIZE;
   rect.w = POINTSIZE;
@@ -255,6 +252,12 @@ finalize_random (void)
 
 /* Generador de muros. */
 
+/* Probabilidad con la que un muro continuara, es decir, 1-wall_p es
+   la probabilidad de terminar el muro actual. Cada muro se expande en
+   una dirección libre aleatoria, de no haberla, el muro se termina y
+   se comienza otro. */
+#define WALL_P 0.95484160391
+
 void
 walls (int n, player_t * p1, player_t * p2)
 {
@@ -262,17 +265,50 @@ walls (int n, player_t * p1, player_t * p2)
   int (*v)[2];
   int i,j;
   int index;
-
+  int new_wall_p;
   if (graphicsp)
     color = SDL_MapRGB(screen->format, 50, 50, 50);
 
+  /* Envia la cantidad de muros que habra */
   write_cords (p1, n, 0);
   write_cords (p2, n, 0);
 
+  new_wall_p = 1;
   while(n>0)
     {
       int i,j;
-      random_position (&i, &j);
+      if (!new_wall_p)
+        {
+          int c;
+          int directions[][2] = {{-1, 0}, {0, -1}, {1, 0}, {0, 1}};
+          int di, dj;
+          int d;
+          c=0;
+          do
+            {
+              d = (int)((float)rand() / RAND_MAX * 4);
+              di = directions[d][0];
+              dj = directions[d][1];
+              directions[d][0] = -1;
+              directions[d][0] = -1;
+              c++;
+            }
+          while( c<20 &&
+                 (i+di<0 || i+di >= N ||
+                  j+dj<0 || j+dj >= N ||
+                  map[i+di][j+dj] == 1 ));
+          i += di;
+          j += dj;
+          if (c==20)
+            new_wall_p = 1;
+          else
+            new_wall_p = (float)rand() / RAND_MAX >= WALL_P;
+        }
+      if (new_wall_p)
+        {
+          random_position (&i, &j);
+          new_wall_p = 0;
+        }
       draw_point (i, j, color);
       map[i][j]=1;
       write_cords (p1, i, j);

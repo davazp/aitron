@@ -392,7 +392,7 @@ main (int argc, char * argv[])
 
       random_position (&p[0][0], &p[0][1]);
       random_position (&p[1][0], &p[1][1]);
-      prepare_player (player1, p[0][0], p[1][1]);
+      prepare_player (player1, p[0][0], p[0][1]);
       prepare_player (player2, p[1][0], p[1][1]);
       write_cords (player1, p[1][0], p[1][1]);
       write_cords (player2, p[0][0], p[0][1]);

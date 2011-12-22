@@ -71,18 +71,16 @@
           finally (return list))))
 
 ;;; Move in the direction (DI, DJ).
-(defvar *last-direction* nil)
 (defun move (di dj)
   (incf (player-i *me*) di)
   (incf (player-j *me*) dj)
   (let ((i (player-i *me*))
         (j (player-j *me*)))
     (write-cords i j)
-    (set-cell-as-busy i j)
-    (setf *last-direction* (list (list di dj)))))
+    (set-cell-as-busy i j)))
 
 (defun move-to-first-free-cell ()
-  (loop for (di dj) in (append *last-direction* '((-1 0) (0 -1) (1 0) (0 1) (0 0)))
+  (loop for (di dj) in '((-1 0) (1 0) (0 -1) (0 1) (0 0))
         for i = (+ (player-i *me*) di)
         for j = (+ (player-j *me*) dj)
         until (and (valid-cell-p i j) (free-cell-p i j))

@@ -6,7 +6,6 @@
      ,@body))
 
 (ignore-output
-  (compile-file "boa")
-  (load "boa"))
+  (load "boa.lisp"))
 
 (boa:main)

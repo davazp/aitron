@@ -49,7 +49,6 @@ draw_point (int i, int j, int color)
   rect.w = POINTSIZE - 2;
   rect.h = POINTSIZE - 2;
   SDL_FillRect (screen, &rect, color);
-  SDL_Flip (screen);
 }
 
 typedef struct
@@ -195,23 +194,75 @@ move (player_t * player, int i, int j)
   return 0;
 }
 
+
+/* Generador de posiciones aleatorias UNICAS y libres */
+
+static int (*random_map)[2];
+static int random_index;
+
+void
+initialize_random (void)
+{
+  int i,j;
+  random_map = malloc (sizeof(int)*2*N*N);
+  random_index = 0;
+  for(i=0; i<N; i++)
+    {
+      for(j=0; j<N; j++)
+        {
+          random_map[i*N + j][0] = i;
+          random_map[i*N + j][1] = j;
+        }
+    }
+}
+
 void
 random_position (int *i, int*j)
 {
   static int initialized=0;
+  int offset;
   if (!initialized)
     {
       srand (time (NULL));
       initialized=1;
     }
-  *i = (int)((float)rand() / RAND_MAX * N);
-  *j = (int)((float)rand() / RAND_MAX * N);
+  /* Un numero aleatorio desde 0 a N^2 - RANDOM_INDEX. Esto es, una
+     posicion aleatoria en el mapa random_map a partir de
+     RANDOM_INDEX.  */
+  do
+    {
+      offset = (int)((float)rand() / RAND_MAX * N * N - random_index);
+      /* Escribimos la posicion */
+      *i = random_map[random_index + offset][0];
+      *j = random_map[random_index + offset][1];
+      /* Intercambiamos la celda aleatoria por la que de orden-major
+         RANDOM_INDEX e incrementamos este. */
+      random_map[random_index + offset][0] = random_map[random_index][0];
+      random_map[random_index][0] = *i;
+      random_map[random_index + offset][1] = random_map[random_index][1];
+      random_map[random_index][1] = *j;
+      random_index++;
+    }
+  while(map[*i][*j]);
 }
+
+void
+finalize_random (void)
+{
+  free (random_map);
+}
+
+
+/* Generador de muros. */
 
 void
 walls (int n, player_t * p1, player_t * p2)
 {
   Uint32 color;
+  int (*v)[2];
+  int i,j;
+  int index;
+
   if (graphicsp)
     color = SDL_MapRGB(screen->format, 50, 50, 50);
 
@@ -220,26 +271,17 @@ walls (int n, player_t * p1, player_t * p2)
 
   while(n>0)
     {
-      int ii,jj;
-      int i[5],j[5];
-      random_position (&i[0], &j[0]);
-      random_position (&i[1], &j[1]);
-      random_position (&i[2], &j[2]);
-      random_position (&i[3], &j[3]);
-      random_position (&i[4], &j[4]);
-      ii = (i[0] + i[1] + i[2] + i[3] + i[4]) / 5;
-      jj = (j[0] + j[1] + j[2] + j[3] + j[4]) / 5;
-      if (!map[ii][jj])
-        {
-          draw_point (ii, jj, color);
-          map[ii][jj]=1;
-          write_cords (p1, ii, jj);
-          write_cords (p2, ii, jj);
-          n--;
-        }
+      int i,j;
+      random_position (&i, &j);
+      draw_point (i, j, color);
+      map[i][j]=1;
+      write_cords (p1, i, j);
+      write_cords (p2, i, j);
+      n--;
     }
 }
 
+
 
 void
 usage (void)
@@ -301,6 +343,8 @@ main (int argc, char * argv[])
         }
     }
 
+  initialize_random();
+
   player1 = create_player (progname1);
   player2 = create_player (progname2);
   for(current_play=0; current_play<plays; current_play++)
@@ -309,13 +353,8 @@ main (int argc, char * argv[])
       if (graphicsp)
         SDL_FillRect( screen, NULL, 0 );
 
-      do {
-        random_position (&p[0][0], &p[0][1]);
-      } while (map[ p[0][0] ][ p[0][1] ]);
-      do {
-        random_position (&p[1][0], &p[1][1]);
-      } while (map[ p[1][0] ][ p[1][1] ]);
-
+      random_position (&p[0][0], &p[0][1]);
+      random_position (&p[1][0], &p[1][1]);
       prepare_player (player1, p[0][0], p[1][1]);
       prepare_player (player2, p[1][0], p[1][1]);
       write_cords (player1, p[1][0], p[1][1]);
@@ -364,6 +403,7 @@ main (int argc, char * argv[])
                     finishp = 1;
                   }
               }
+              SDL_Flip (screen);
               SDL_Delay (delay);
             }
         }
@@ -378,6 +418,8 @@ main (int argc, char * argv[])
   printf ("Un total de %d turnos, %f turnos de media por partida.\n", turns, (float)turns/plays);
   close_player (player1);
   close_player (player2);
+
+  finalize_random();
 
   if (graphicsp)
     SDL_Quit ();

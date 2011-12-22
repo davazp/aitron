@@ -1,0 +1,38 @@
+#!/usr/bin/sbcl --script
+;; -*- Lisp -*-
+
+(defconstant N 100)
+
+(defvar *map*
+  (make-array (list N N) :initial-element nil))
+
+;;; Lee tu posicion inicial
+(defvar *x* (read))
+(defvar *y* (read))
+
+;;; Lee la posicion inicial de tu enemigo
+(defvar *cx* (read))
+(defvar *cy* (read))
+
+(defun validp (x y)
+  (and (<= 0 x (1- N))
+       (<= 0 y (1- N))
+       (not (aref *map* x y))))
+
+;;; Estrategia: moverse donde sea pero chocarse si es posible.
+
+(defun move-to-first-free-cell ()
+  (loop for (di dj) in '((1 0) (0 1) (-1 0) (0 -1))
+        until (validp (+ *x* dj) (+ *y* di))
+        finally
+           (progn
+             (incf *x* dj)
+             (incf *y* di)))
+  (setf (aref *map* *x* *y*) t))
+
+(loop
+  (move-to-first-free-cell)
+  (format t "~a ~a~%" *x* *y*)
+  (let* ((i (read))
+         (j (read)))
+    (setf (aref *map* i j) t)))

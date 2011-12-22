@@ -93,6 +93,100 @@
              (t
               (move di dj)))))
 
+
+;;; FIFO
+(defstruct (queue (:constructor make-queue%))
+  start
+  end)
+
+(defun make-queue (&optional list)
+  (make-queue% :start list :end (last list)))
+
+(defun null-queue-p (queue)
+  (null (queue-start queue)))
+
+(defun enqueue (x queue)
+  (let ((node (cons x nil)))
+    (unless (null (queue-end queue))
+      (setf (cdr (queue-end queue)) node))
+    (when (null (queue-start queue))
+      (setf (queue-start queue) node))
+    (setf (queue-end queue) node)
+    x))
+
+(defun dequeue (queue)
+  (let ((node (queue-start queue)))
+    (prog1 (car node)
+      (setf (queue-start queue) (cdr node)))))
+
+(defun enqueue-list (list queue)
+  (dolist (x list)
+    (enqueue x queue)))
+
+
+(defmacro until (cond &body body)
+  `(do nil (,cond) ,@body))
+
+(defmacro while (cond &body body)
+  `(until (not ,cond) ,@body))
+
+(defun make-initialized-array (dimensions element)
+  (make-array dimensions :initial-element element))
+
+(defun make-array-as (array element)
+  (make-array (array-dimensions array) :initial-element element))
+
+(defun set-array-elements (list-nodes array value)
+  (loop for (i j) in list-nodes do (setf (aref array i j) value)))
+
+
+(defun list-gradient-neighbours (gradient i j)
+  (let ((value (aref gradient i j)))
+    (loop for (di dj) in '((-1 0) (1 0) (0 -1) (0 1))
+          for ni = (+ i di)
+          for nj = (+ j dj)
+          when (and (valid-cell-p ni nj) (free-cell-p ni nj))
+          when (> (aref gradient ni nj) (1+ value))
+          collect (list ni nj))))
+
+;;; Return an array with the distances to the point I,J in *MAP*.
+(defun compute-gradient (i j)
+  (let ((gradient (make-array-as *map* (array-total-size *map*)))
+        (frontier (make-queue)))
+    (setf (aref gradient i j) 0)
+    (enqueue (list i j) frontier)
+    (until (null-queue-p frontier)
+      (destructuring-bind (i j) (dequeue frontier)
+        (let ((value (aref gradient i j)))
+          (let ((neighbours (list-gradient-neighbours gradient i j)))
+            (set-array-elements neighbours gradient (1+ value))
+            (enqueue-list neighbours frontier)))))
+    gradient))
+
+
+(defun list-movements (i j)
+  (loop for (di dj) in '((-1 0) (1 0) (0 -1) (0 1))
+        for ni = (+ i di)
+        for nj = (+ j dj)
+        when (and (valid-cell-p ni nj) (free-cell-p ni nj))
+        collect (list di dj)))
+
+(defun list-neighbours (i j)
+  (loop for (di dj) in '((-1 0) (1 0) (0 -1) (0 1))
+        for ni = (+ i di)
+        for nj = (+ j dj)
+        when (and (valid-cell-p ni nj) (free-cell-p ni nj))
+        collect (list ni nj)))
+
+(defun minimize (list predicate &key (key #'identity))
+  ;; Aqui nos podemos ahorrar bastante computación
+  (reduce (lambda (a b)
+            (if (funcall predicate (funcall key a) (funcall key b))
+                a
+                b))
+          list))
+
+
 (defun main ()
   (log "------------------------------------------------------------")
   (log "New play started.")
@@ -110,8 +204,15 @@
   (destructuring-bind (n &optional ign) (read-cords)
     (declare (ignore ign))
     (loop repeat n do (apply #'set-cell-as-busy (read-cords))))
-  (loop
-    (move-to-first-free-cell)
-    (apply #'set-cell-as-busy (read-cords))))
+  (let ((grad (compute-gradient 0 0)))
+    (loop
+      (apply #'move
+       (minimize (scramble (or (list-movements (player-i *me*) (player-j *me*)) '((1 0)))) #'<
+                 :key (lambda (mov)
+                        (destructuring-bind (di dj) mov
+                          (aref grad
+                                (+ di (player-i *me*))
+                                (+ dj (player-j *me*)))))))
+      (apply #'set-cell-as-busy (read-cords)))))
 
 ;;; boa ends here

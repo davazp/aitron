@@ -15,7 +15,7 @@
 (defvar *cy* (read))
 
 ;;; Lee los obstaculos
-(loop repeat 100
+(loop repeat (prog1 (read) (read))
       for (i j) = (list (read) (read))
       do (setf(aref *map* i j) t))
 

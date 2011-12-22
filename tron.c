@@ -25,6 +25,7 @@ int map[N][N];
 unsigned int delay = 100;
 int graphicsp = 1;
 int plays = 1;
+int nwalls = 100;
 
 int current_play;
 int turns = 0;
@@ -160,8 +161,9 @@ sillyp (player_t * player, int i, int j)
   return i<0 || i>=N || j<0 || j>=N;
 }
 
+
 int
-move (player_t * player, int i, int j)
+lossp (player_t * player, int i, int j)
 {
   if(cheatp (player, i, j))
     {
@@ -181,6 +183,12 @@ move (player_t * player, int i, int j)
       player->loses++;
       return -1;
     }
+}
+
+
+int
+move (player_t * player, int i, int j)
+{
   player->i = i;
   player->j = j;
   map[i][j]=1;
@@ -206,6 +214,10 @@ walls (int n, player_t * p1, player_t * p2)
   Uint32 color;
   if (graphicsp)
     color = SDL_MapRGB(screen->format, 50, 50, 50);
+
+  write_cords (p1, n, 0);
+  write_cords (p2, n, 0);
+
   while(n>0)
     {
       int ii,jj;
@@ -249,7 +261,7 @@ main (int argc, char * argv[])
   const char * progname1;
   const char * progname2;
 
-  while ((opt = getopt(argc, argv, "bd:n:")) != -1) {
+  while ((opt = getopt(argc, argv, "bd:n:w:")) != -1) {
     switch (opt) {
       /* Establece el retraso entre movimiento y movimiento */
     case 'd':
@@ -262,6 +274,10 @@ main (int argc, char * argv[])
       /* Numero de partidas para simular. */
     case 'n':
       plays = atoi (optarg);
+      break;
+      /* Numero de particulas de muro */
+    case 'w':
+      nwalls = atoi (optarg);
       break;
     default: /* '?' */
       usage();
@@ -305,7 +321,7 @@ main (int argc, char * argv[])
       write_cords (player1, p[1][0], p[1][1]);
       write_cords (player2, p[0][0], p[0][1]);
 
-      walls(100, player1, player2);
+      walls(nwalls, player1, player2);
 
       /* Bucle principal */
       finishp=0;
@@ -317,9 +333,21 @@ main (int argc, char * argv[])
           /* Lee los siguientes movimientos de cada bot */
           read_cords (player1, &p[0][0], &p[0][1]);
           read_cords (player2, &p[1][0], &p[1][1]);
+          /* Comprueba si alguien ha perdido */
+          if (p[0][0]==p[1][0] && p[0][1]==p[1][1])
+            {
+              player1->loses++;
+              player2->loses++;
+              finishp = 1;
+            }
+          else
+            {
+              finishp |= lossp (player1, p[0][0], p[0][1]);
+              finishp |= lossp (player2, p[1][0], p[1][1]);
+            }
           /* Actualiza el mapa con los movimientos */
-          finishp |= move (player1, p[0][0], p[0][1]);
-          finishp |= move (player2, p[1][0], p[1][1]);
+          move (player1, p[0][0], p[0][1]);
+          move (player2, p[1][0], p[1][1]);
           turns++;
           /* Informa del ultimo movimiento de cada bot al otro */
           write_cords (player1, p[1][0], p[1][1]);
@@ -331,8 +359,10 @@ main (int argc, char * argv[])
                  usuario lo haya solicitado. */
               while( SDL_PollEvent( &event ) ){
                 if (event.type == SDL_QUIT)
-                  plays = current_play;
-                  finishp = 1;
+                  {
+                    plays = current_play;
+                    finishp = 1;
+                  }
               }
               SDL_Delay (delay);
             }

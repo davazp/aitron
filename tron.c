@@ -25,7 +25,7 @@ int map[N][N];
 unsigned int delay = 100;
 int graphicsp = 1;
 int plays = 1;
-int nwalls = 100;
+int nwalls = 500;
 
 int current_play;
 int turns = 0;

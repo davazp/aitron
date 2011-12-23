@@ -1,0 +1,77 @@
+-*- org -*-
+#+title: AI TRON
+#+startup: showall
+
+* AI Tron
+  (descripción)
+
+*** Usando el simulador
+    Compilas simplemente con `make'. Se creará un ejecutable
+    `tron'. Los argumentos para el ejecutable son dos bots (asegúrate
+    de que tienes permiso de ejecución en los bots).
+
+    Además, puedes usar las siguientes opciones:
+
+    -b        NO SDL, hace la simulación y saca estadísticas,
+              sin mostrar la partida gráficamente.
+
+    -n NUM    Establece el número de partidas que jugarán.
+
+    -d MS     Especifica el número de milisegundos entre
+              movimiento y movimiento. El valor por defecto es 100.
+
+    -w N      Especifica cuantas celdas serán muros. El valor
+              por defecto es 500.
+
+    Ejemplos de uso:
+
+    ./tron dummy cazador
+    ./tron -n 20 -d 0 cobarde cobarde
+    ./tron -n 10 -d 100 -w 0 cazador cobarde
+    ./tron -n 10 -d 100 -w 2000 cazador cobarde
+    ./tron -b -n 200 cazador cobarde
+
+*** Escribiendo un bot
+    El tamaño del mapa donde se mueve tron es de 100x100 celdas. Los
+    bots son programas ejecutables (o scripts) cualesquiera.
+
+    El protocolo del juego funciona por la entrada/salida estándar y
+    consiste de lineas de pares de enteros, de la forma:
+
+    N M
+
+    formados por uno o mas digitos decimales cada uno. (Pueden ser
+    leidos facilmente con SCANF y compañia).
+
+    Tu bot se ejecutará una vez por partida. Nada más ejecutado, se
+    enviarán el primer par de enteros con tus coordenadas iniciales, y
+    otro par de enteros con las coordenadas de tu adversario.
+
+    Luego, se recibe otro par de enteros, el primero es el número de
+    obstáculos en el mapa, el segundo es 0 y debe ser
+    ignorado. Después de esto, se recibirán tantos pares de enteros
+    como celdas de muros hay, con las coordenadas de tales celdas).
+
+    Una vez alcanzando este punto, ya se ha inicializado el juego. Tu
+    bot debe escribir a la salida estándar a que celda quiere moverse,
+    y luego leer a que celda se ha movido el enemigo sucesivamente. El
+    bot es cerrado automáticamente cuando la partida termina.
+
+    Un ejemplo comentado del protocolo sigue abajo, desde el carácter
+    \ al final de la linea representan comentarios. < Indica que la
+    línea es leida desde entrada y > que la línea es escrita en la
+    salida.
+
+<   10 23               \ Tus coordenadas
+<   15 23               \ Coordenadas de tu adversario.
+<   5 0                 \ Hay 5 celdas de muros
+<   0 0                 \ Muro #1
+<   1 1                 \ Muro #2
+<   2 2                 \ Muro #3
+<   3 3                 \ Muro #4
+<   4 4                 \ Muro #5
+>   10 24               \ Tu mueves hacia la derecha
+<   14 23               \ El enemigo se mueve hacia arriba
+>   10 25               \ Tu mueves hacia la derecha
+<   13 23               \ El enemigo se mueve hacia arriba
+    ...

@@ -257,6 +257,15 @@
                                          (log "COMPUTE-FILL: ~d ~d => ~d" i j value))))))))
 
 
+
+(defun move-to-maximize-openess ()
+  (apply #'move (maximizing (scramble (list-movements (player-i *me*) (player-j *me*)))
+                            :key (lambda (mov)
+                                   (let ((i (+ (player-i *me*) (first mov)))
+                                         (j (+ (player-j *me*) (second mov))))
+                                     (length (list-movements i j nil)))))))
+
+
 ;;; LAS TECNICAS QUE VOY IMPLEMENTANDO ARRIBA SON INDIVIDUALES, Y EN
 ;;; GENERAL SE TRATA DE OPTIMIZAR UNA FUNCION VALOR. TENER ESTO EN
 ;;; CUENTA PARA CUANDO REORGANIZE EL CODIGO, HACIENDOLO MUCHO MAS
@@ -293,10 +302,7 @@
     (loop repeat n do (apply #'set-cell-as-busy (read-cords))))
   (let ((*random-state* (make-random-state t)))
     (loop
-      (let ((movs (list-movements (player-i *me*) (player-j *me*))))
-        (if (= (length movs) 4)
-            (apply #'move (car (scramble movs)))
-            (move-to-maximize-fill)))
+      (move-to-maximize-openess)
       (apply #'set-cell-as-busy (read-cords)))))
 
 ;;; boa ends here

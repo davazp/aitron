@@ -77,6 +77,17 @@
          (setf ,form ,valuevar))
        (defsetf ,name ,writer))))
 
+;;; Functional operators
+
+(defun curry (fn &rest preargs)
+  (lambda (&rest postargs)
+    (apply fn (append preargs postargs))))
+
+(defun rcurry (fn &rest postargs)
+  (lambda (&rest preargs)
+    (apply fn (append preargs postargs))))
+
+
 
 ;;; Array functions
 
@@ -103,7 +114,7 @@
       (let ((value (apply f (mapcar (rcurry #'row-major-aref i) arrays))))
         (setf (row-major-aref result i) value)))))
 
-
+
 ;;; A simple implementations of queues,
 ;;; FIFO data structure.
 (defstruct (queue (:constructor make-queue%))
@@ -139,6 +150,91 @@
 (defun enqueue-list (list queue)
   (dolist (x list)
     (enqueue x queue)))
+
+
+;;; Heaps
+
+(defun make-heap (&optional (estimated-size 16))
+  (make-array (list (* 2 estimated-size))
+              :element-type 'fixnum
+              :adjustable t
+              :fill-pointer 0))
+
+(defun %heap-null-index-p (index)
+  (zerop index))
+
+;;; Offset of the indexed element in the array.
+(defun %heap-offset (index)
+  (* 2 (1- index)))
+
+(defun %heap-index (offset)
+  (1+ (/ offset 2)))
+
+;;; Value of the indexed elment.
+(define-accessor %heap-value (heap index)
+  (aref heap (%heap-offset index)))
+
+;;; Priority of the indexed element.
+(define-accessor %heap-priority (heap index)
+  (aref heap (1+ (%heap-offset index))))
+
+;;; Left child of the indexed element.
+(defun %heap-child-1 (index)
+  (* 2 index))
+
+;;; Right child of the indexed element.
+(defun %heap-child-2 (index)
+  (1+ (* 2 index)))
+
+(defun %heap-childs (heap index)
+  (flet ((valid-child-p (index) (< (%heap-offset index) (length heap))))
+    (let ((child1 (%heap-child-1 index))
+          (child2 (%heap-child-2 index)))
+      (append
+       (if (valid-child-p child1) (list child1) nil)
+       (if (valid-child-p child2) (list child2) nil)))))
+
+(defun %heap-top () 1)
+(defun %heap-bottom (heap)
+  (%heap-index (- (length heap) 2)))
+
+(defun empty-heap-p (heap)
+  (zerop (%heap-bottom heap)))
+
+(defun %heap-parent (index)
+  (truncate (/ index 2)))
+
+(defun %heap< (heap index1 index2)
+  (< (%heap-priority heap index1)
+     (%heap-priority heap index2)))
+
+(defun %heap-swap (heap index1 index2)
+  (rotatef (%heap-value heap index1) (%heap-value heap index2))
+  (rotatef (%heap-priority heap index1) (%heap-priority heap index2)))
+
+(defun heap-insert (heap x priority)
+  (let ((newindex
+         (prog1 (%heap-index (vector-push-extend x heap))
+           (vector-push-extend priority heap))))
+    (loop for index = newindex then parent
+          for parent = (%heap-parent index)
+          until (%heap-null-index-p parent)
+          while (%heap< heap index parent)
+          do (%heap-swap heap index parent))))
+
+(defun heap-remove-max (heap)
+  (cond
+    ((empty-heap-p heap) nil)
+    (t
+     (let ((value (%heap-value heap (%heap-top))))
+       (%heap-swap heap (%heap-top) (%heap-bottom heap))
+       (decf (fill-pointer heap) 2)
+       (loop for index = (%heap-top) then child
+             for childs = (%heap-childs heap index)
+             for child = (minimizing childs (curry #'%heap-priority heap))
+             while (and child (%heap< heap child index))
+             do (%heap-swap heap index child)
+             finally (return value))))))
 
 
 ;;; Board and cells
@@ -189,6 +285,7 @@
     (set-cell-as-busy cell)))
 
 ;;; Input / output
+
 (defun read-cords (&optional stream)
   (let ((line (read-line stream)))
     (multiple-value-bind (i j-start)
@@ -288,20 +385,22 @@
 ;;; Find the element of LIST whose value of KEY is maximum according
 ;;; to the order relationship PREDICATE.
 (defun optimizing (list predicate &key (key #'identity))
-  (let* ((max (first list))
-         (max-value (funcall key max)))
-    (dolist (x (rest list) max)
-      (let ((x-value (funcall key x)))
-        (when (funcall predicate x-value max-value)
-          (setf max x)
-          (setf max-value x-value))))))
+  (if (null list)
+      nil
+      (let* ((max (first list))
+             (max-value (funcall key max)))
+        (dolist (x (rest list) max)
+          (let ((x-value (funcall key x)))
+            (when (funcall predicate x-value max-value)
+              (setf max x)
+              (setf max-value x-value)))))))
 
 ;;; Find the element of LIST minimizing KEY.
-(defun minimizing (list &key (key #'identity))
+(defun minimizing (list key)
   (optimizing list #'< :key key))
 
 ;;; Find the element of LIST maximizing KEY.
-(defun maximizing (list &key (key #'identity))
+(defun maximizing (list key)
   (optimizing list #'> :key key))
 
 
@@ -313,15 +412,8 @@
          (directions (or (list-directions) (list (random-direction)))))
     (move
      (minimizing (scramble directions)
-                 :key (curry #'gradient-of-direction grad)))))
+                 (curry #'gradient-of-direction grad)))))
 
-(defun curry (fn &rest preargs)
-  (lambda (&rest postargs)
-    (apply fn (append preargs postargs))))
-
-(defun rcurry (fn &rest postargs)
-  (lambda (&rest preargs)
-    (apply fn (append preargs postargs))))
 
 
 (defun compute-fill-algorithm (cell)
@@ -333,31 +425,30 @@
 ;;; Move to the maximizing fill area cell
 (defun move-to-maximize-fill ()
   (move (maximizing (scramble (list-directions))
-                    :key (lambda (d)
-                           (compute-fill-algorithm (cell+ *current-cell* d))))))
+                    (lambda (d)
+                      (compute-fill-algorithm (cell+ *current-cell* d))))))
 
 
 
 (defun move-to-maximize-openess ()
   (move (maximizing (scramble (list-directions))
-                    :key (lambda (d)
-                           (let ((*current-cell* (cell+ *current-cell* d)))
-                             (length (valid-directions)))))))
-
+                    (lambda (d)
+                      (let ((*current-cell* (cell+ *current-cell* d)))
+                        (length (valid-directions)))))))
 
 (defun basin ()
   (maparray #'compare
-            (gradient *current-cell*)
-            (gradient *prey-cell*)))
+            (gradient *current-cell* 20)
+            (gradient *prey-cell* 20)))
 
 (defun basin-size ()
   (count -1 (linearize-array (basin))))
 
 (defun move-to-maximize-basin ()
   (move (maximizing (scramble (list-directions))
-                    :key (lambda (d)
-                           (let ((*current-cell* (cell+ *current-cell* d)))
-                             (basin-size))))))
+                    (lambda (d)
+                      (let ((*current-cell* (cell+ *current-cell* d)))
+                        (basin-size))))))
 
 
 
@@ -376,6 +467,16 @@
 ;;; IGUALMENTE, UNA VEZ EL OBJETIVO DE SABER CUANDO EL ENEMIGO ESTA
 ;;; ENCERRADO ES RELLENAR EL MAYOR AREA POSIBLE, ESTO ES HECHO CON
 ;;; METODOS TRADICIONALES.
+
+
+;;; ESTRATEGIA DE REDUCCION DE LA DIMENSIONALIDAD:
+;;;
+;;; Generar particlas en celda (aleatoriamente?) y comprobar algunas
+;;; medidas intersantes para dichos puntos. Dichos puntos pueden
+;;; alejarse para elegir la tactica de juego a gran escala o mas
+;;; detallada.
+
+
 
 (defun main ()
   (log "------------------------------------------------------------")

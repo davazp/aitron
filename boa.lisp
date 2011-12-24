@@ -154,7 +154,8 @@
 
 ;;; Heaps
 
-(defun make-heap (&optional (estimated-size 16))
+;;; Create a heap with a optional ESTIMATED SIZE.
+(defun make-heap (&optional (estimated-size 32))
   (make-array (list (* 2 estimated-size))
               :element-type 'fixnum
               :adjustable t
@@ -212,6 +213,7 @@
   (rotatef (%heap-value heap index1) (%heap-value heap index2))
   (rotatef (%heap-priority heap index1) (%heap-priority heap index2)))
 
+;;; Insert a new element X with PRIORITY in HEAP.
 (defun heap-insert (heap x priority)
   (let ((newindex
          (prog1 (%heap-index (vector-push-extend x heap))
@@ -222,6 +224,7 @@
           while (%heap< heap index parent)
           do (%heap-swap heap index parent))))
 
+;;; Remove the element with the highest priority in the HEAP.
 (defun heap-remove-max (heap)
   (cond
     ((empty-heap-p heap) nil)
@@ -244,7 +247,7 @@
 (defconstant +height+ 100)
 
 (defvar *map*
-  (make-array (list +height+ +width+) :initial-element nil))
+  (make-array (list +height+ +width+) :element-type 'bit :initial-element 0))
 
 (defun cell (i j)
   (list i j))
@@ -267,7 +270,7 @@
        (<= 0 (cell-j cell) (1- +width+))))
 
 (defun busy-cell-p (cell)
-  (aref *map* (cell-i cell) (cell-j cell)))
+  (= 1 (aref *map* (cell-i cell) (cell-j cell))))
 
 (defun free-cell-p (cell)
   (not (busy-cell-p cell)))
@@ -278,7 +281,7 @@
 (defun set-cell-as-busy (cell)
   (let ((i (cell-i cell))
         (j (cell-j cell)))
-    (setf (aref *map* i j) t)))
+    (setf (aref *map* i j) 1)))
 
 (defun set-cells-as-busy (list-of-cells)
   (dolist (cell list-of-cells)
@@ -438,8 +441,8 @@
 
 (defun basin ()
   (maparray #'compare
-            (gradient *current-cell* 20)
-            (gradient *prey-cell* 20)))
+            (gradient *current-cell* 30)
+            (gradient *prey-cell* 30)))
 
 (defun basin-size ()
   (count -1 (linearize-array (basin))))
@@ -449,7 +452,6 @@
                     (lambda (d)
                       (let ((*current-cell* (cell+ *current-cell* d)))
                         (basin-size))))))
-
 
 
 ;;; LAS TECNICAS QUE VOY IMPLEMENTANDO ARRIBA SON INDIVIDUALES, Y EN

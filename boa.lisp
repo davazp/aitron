@@ -32,6 +32,12 @@
 (defmacro until (cond &body body)
   `(do nil (,cond) ,@body))
 
+(defun compare (a b)
+  (cond
+    ((< a b) -1)
+    ((= a b)  0)
+    ((> a b)  1)))
+
 ;;; Return a cicular list
 (defun circular (&rest list)
   (let ((result (copy-list list)))
@@ -84,6 +90,19 @@
 ;;; dimensions.
 (defun make-array-as (array &rest args &key &allow-other-keys)
   (apply #'make-array (array-dimensions array) args))
+
+(defun linearize-array (array)
+  (make-array (array-total-size array) :displaced-to array))
+
+;;; Map a function to the elements of an array.
+(defun maparray (f array &rest others)
+  (let* ((dimensions (array-dimensions array))
+         (result (make-array dimensions))
+         (arrays (cons array others)))
+    (dotimes (i (array-total-size array) result)
+      (let ((value (apply f (mapcar (rcurry #'row-major-aref i) arrays))))
+        (setf (row-major-aref result i) value)))))
+
 
 ;;; A simple implementations of queues,
 ;;; FIFO data structure.
@@ -302,24 +321,6 @@
   (lambda (&rest preargs)
     (apply fn (append preargs postargs))))
 
-
-;;; TODO: PROBAR
-(defun maparray (f array &rest others)
-  (let* ((dimensions (array-dimensions array))
-         (result (make-array dimensions))
-         (arrays (cons array others)))
-    (dotimes (i (array-total-size array))
-      (let ((value (apply f (mapcar (rcurry #'row-major-aref i) arrays))))
-        (setf (row-major-aref result i) value)))))
-
-(defun compare (a b)
-  (cond
-    ((< a b) -1)
-    ((= a b)  0)
-    ((> a b)  1)))
-
-(defun linearize-array (array)
-  (make-array (array-total-size array) :displaced-to array))
 
 (defun compute-fill-algorithm (cell)
   (let* ((grad (linearize-array (gradient cell)))

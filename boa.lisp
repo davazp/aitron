@@ -345,6 +345,22 @@
                              (length (valid-directions)))))))
 
 
+(defun basin ()
+  (maparray #'compare
+            (gradient *current-cell*)
+            (gradient *prey-cell*)))
+
+(defun basin-size ()
+  (count -1 (linearize-array (basin))))
+
+(defun move-to-maximize-basin ()
+  (move (maximizing (scramble (list-directions))
+                    :key (lambda (d)
+                           (let ((*current-cell* (cell+ *current-cell* d)))
+                             (basin-size))))))
+
+
+
 ;;; LAS TECNICAS QUE VOY IMPLEMENTANDO ARRIBA SON INDIVIDUALES, Y EN
 ;;; GENERAL SE TRATA DE OPTIMIZAR UNA FUNCION VALOR. TENER ESTO EN
 ;;; CUENTA PARA CUANDO REORGANIZE EL CODIGO, HACIENDOLO MUCHO MAS
@@ -375,7 +391,7 @@
   ;; Game loop
   (let ((*random-state* (make-random-state t)))
     (loop
-      (move-to-maximize-fill)
+      (move-to-maximize-basin)
       (set-cell-as-busy (read-cords)))))
 
 ;;; boa ends here

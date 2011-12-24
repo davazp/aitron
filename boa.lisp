@@ -269,7 +269,7 @@
       (remove-if #'explored-cell-p (list-neighbours cell)))))
 
 ;;; Return an array with the distances to the point I,J in *MAP*.
-(defun gradient (cell)
+(defun gradient (cell &optional depth)
   (let ((gradient (make-gradient))
         (frontier (make-queue)))
     (setf (gradient-of-cell gradient cell) 0)
@@ -278,6 +278,8 @@
       (let* ((cell (dequeue frontier))
              (value (gradient-of-cell gradient cell))
              (neighbours (unexplored-neighbours gradient cell)))
+        (when (and depth (= value depth))
+          (return))
         (set-gradient-of-cells gradient neighbours (1+ value))
         (enqueue-list neighbours frontier)))
     gradient))

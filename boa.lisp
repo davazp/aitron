@@ -9,26 +9,6 @@
 
 (in-package :boa)
 
-;;; Size of board
-(defconstant +width+ 100)
-(defconstant +height+ 100)
-
-(defvar *map*
-  (make-array (list +height+ +width+) :initial-element nil))
-
-(defun valid-cell-p (i j)
-  (and (<= 0 i (1- +height+))
-       (<= 0 j (1- +width+))))
-
-(defun busy-cell-p (i j)
-  (aref *map* i j))
-
-(defun free-cell-p (i j)
-  (not (busy-cell-p i j)))
-
-(defun set-cell-as-busy (i j)
-  (setf (aref *map* i j) t))
-
 ;;; Logs, useful for debugging
 (defvar *logfile* #P"boa.log")
 
@@ -46,20 +26,25 @@
     (apply #'format out fmt args)
     (terpri out)))
 
-;;; Input / output
-(defun read-cords ()
-  (list (read) (read)))
+;;; Utilities
 
-(defun write-cords (i j)
-  (format t "~d ~d~%" i j)
-  (finish-output))
+;;; Execute body until cond to be true.
+(defmacro until (cond &body body)
+  `(do nil (,cond) ,@body))
 
-;;; Players
-(defstruct player
-  i j)
+;;; Return a cicular list
+(defun circular (&rest list)
+  (let ((result (copy-list list)))
+    (nconc result result)))
 
-(defvar *me*)
-(defvar *prey*)
+;;; As mapcar, but the first element is fixed, not a list.
+(defun map1 (function arg &rest lists)
+  (apply #'mapcar function (circular arg) lists))
+
+;;; Return a random element of SEQUENCE.
+(defun random-choice (sequence)
+  (let ((l (length sequence)))
+    (elt sequence (random l))))
 
 ;;; Return a scrambled copy of a list.
 (defun scramble (list)
@@ -70,41 +55,52 @@
           do (rotatef (car tail) (nth i tail))
           finally (return list))))
 
-;;; Move in the direction (DI, DJ).
-(defun move (di dj)
-  (incf (player-i *me*) di)
-  (incf (player-j *me*) dj)
-  (let ((i (player-i *me*))
-        (j (player-j *me*)))
-    (write-cords i j)
-    (set-cell-as-busy i j)))
+;;; Return a symbol whose name is the concatenation of PREFIX to the
+;;; name of SYMBOL.
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defun prefix-symbol (prefix symbol)
+    (intern (concatenate 'string prefix (string symbol)))))
 
-(defun move-to-first-free-cell ()
-  (loop for (di dj) in '((-1 0) (1 0) (0 -1) (0 1) (0 0))
-        for i = (+ (player-i *me*) di)
-        for j = (+ (player-j *me*) dj)
-        until (and (valid-cell-p i j) (free-cell-p i j))
-        finally
-           (cond
-             ((= 0 di dj)
-              ;; Boa does not want to be a cheater
-              (log "  No possible movements!")
-              (move 1 0))
-             (t
-              (move di dj)))))
+;;; Define a simple accessor.
+(defmacro define-accessor (name args form)
+  (let ((valuevar (gensym))
+        (writer (prefix-symbol "SET-" name)))
+    `(progn
+       (defun ,name ,args ,form)
+       (defun ,writer (,@args ,valuevar)
+         (setf ,form ,valuevar))
+       (defsetf ,name ,writer))))
 
 
-;;; FIFO
+;;; Array functions
+
+;;; Return an array of dimensions DIM initialized to the element X. It
+;;; is a shortcut to make-array.
+(defun make-initialized-array (dim x)
+  (make-array dim :initial-element x))
+
+;;; Return an array of the same dimensions as array. It also accepts
+;;; any argument as make-array does, but you have not to give the
+;;; dimensions.
+(defun make-array-as (array &rest args &key &allow-other-keys)
+  (apply #'make-array (array-dimensions array) args))
+
+;;; A simple implementations of queues,
+;;; FIFO data structure.
 (defstruct (queue (:constructor make-queue%))
   start
   end)
 
+;;; Create a new queue, if the optional argument is given, it is a
+;;; list, which will be the initial content of the queue.
 (defun make-queue (&optional list)
   (make-queue% :start list :end (last list)))
 
+;;; Check if QUEUE is empty.
 (defun null-queue-p (queue)
   (null (queue-start queue)))
 
+;;; Add a new element to the queue.
 (defun enqueue (x queue)
   (let ((node (cons x nil)))
     (unless (null (queue-end queue))
@@ -114,105 +110,189 @@
     (setf (queue-end queue) node)
     x))
 
+;;; Get the older element from the queue.
 (defun dequeue (queue)
   (let ((node (queue-start queue)))
     (prog1 (car node)
       (setf (queue-start queue) (cdr node)))))
 
+;;; Add a list of elements to the queue.
 (defun enqueue-list (list queue)
   (dolist (x list)
     (enqueue x queue)))
 
+
+;;; Board and cells
 
-(defmacro until (cond &body body)
-  `(do nil (,cond) ,@body))
+;;; Size of board
+(defconstant +width+ 100)
+(defconstant +height+ 100)
 
-(defmacro while (cond &body body)
-  `(until (not ,cond) ,@body))
+(defvar *map*
+  (make-array (list +height+ +width+) :initial-element nil))
 
-(defun make-initialized-array (dimensions element)
-  (make-array dimensions :initial-element element))
+(defun cell (i j)
+  (list i j))
 
-(defun make-array-as (array element)
-  (make-array (array-dimensions array) :initial-element element))
+(define-accessor cell-i (cell)
+  (first cell))
 
-(defun set-array-elements (list-nodes array value)
-  (loop for (i j) in list-nodes do (setf (aref array i j) value)))
+(define-accessor cell-j (cell)
+  (second cell))
 
+(defun cell+ (pos mov)
+  (let ((i (cell-i pos))
+        (j (cell-j pos)))
+    (let ((di (cell-i mov))
+          (dj (cell-j mov)))
+      (cell (+ i di) (+ j dj)))))
 
-(defun list-gradient-neighbours (gradient i j)
-  (let ((value (aref gradient i j)))
-    (loop for (di dj) in '((-1 0) (1 0) (0 -1) (0 1))
-          for ni = (+ i di)
-          for nj = (+ j dj)
-          when (and (valid-cell-p ni nj) (free-cell-p ni nj))
-          when (> (aref gradient ni nj) (1+ value))
-          collect (list ni nj))))
+(defun valid-cell-p (cell)
+  (and (<= 0 (cell-i cell) (1- +height+))
+       (<= 0 (cell-j cell) (1- +width+))))
+
+(defun busy-cell-p (cell)
+  (aref *map* (cell-i cell) (cell-j cell)))
+
+(defun free-cell-p (cell)
+  (not (busy-cell-p cell)))
+
+(defun available-cell-p (cell)
+  (and (valid-cell-p cell) (free-cell-p cell)))
+
+(defun set-cell-as-busy (cell)
+  (let ((i (cell-i cell))
+        (j (cell-j cell)))
+    (setf (aref *map* i j) t)))
+
+(defun set-cells-as-busy (list-of-cells)
+  (dolist (cell list-of-cells)
+    (set-cell-as-busy cell)))
+
+;;; Input / output
+(defun read-cords (&optional stream)
+  (let ((line (read-line stream)))
+    (multiple-value-bind (i j-start)
+        (parse-integer line :junk-allowed t)
+      (let ((j (parse-integer line :start j-start)))
+        (cell i j)))))
+
+(defun write-cords (cell)
+  (let ((i (cell-i cell))
+        (j (cell-j cell)))
+    (format t "~d ~d~%" i j)
+    (finish-output)))
+
+
+;;; Players
+(defvar *current-cell*)
+(defvar *prey-cell*)
+
+(defvar *up*    '(-1  0))
+(defvar *left*  '( 0 -1))
+(defvar *down*  '( 1  0))
+(defvar *right* '( 0  1))
+(defvar *directions*
+  (list *up* *left* *down* *right*))
+
+;;; Move in the direction (DI, DJ).
+(defun move (d)
+  (setf *current-cell* (cell+ *current-cell* d))
+  (write-cords *current-cell*)
+  (set-cell-as-busy *current-cell*))
+
+(defun valid-direction-p (d &optional (cell *current-cell*))
+  (valid-cell-p (cell+ cell d)))
+
+(defun available-direction-p (d &optional (cell *current-cell*))
+  (available-cell-p (cell+ cell d)))
+
+(defun valid-neighbours (&optional (cell *current-cell*))
+  (let ((adjacents (map1 #'cell+ cell *directions*)))
+    (remove-if-not #'valid-cell-p adjacents)))
+
+(defun list-neighbours (&optional (cell *current-cell*))
+  (remove-if-not #'free-cell-p (valid-neighbours cell)))
+
+(defun valid-directions (&optional (cell *current-cell*))
+  (remove-if-not (rcurry #'valid-directions cell) *directions*))
+
+(defun list-directions (&optional (cell *current-cell*))
+  (remove-if-not (rcurry #'available-direction-p cell) *directions*))
+
+(defun random-direction (&optional (cell *current-cell*))
+  (let ((available (list-directions cell)))
+    (random-choice
+     (if (null available)
+         (valid-directions cell)
+         (list-directions cell)))))
+
+
+;;; Gradient
+
+(defun make-gradient ()
+  (make-array-as *map* :initial-element (array-total-size *map*)))
+
+(define-accessor gradient-of-cell (gradient cell)
+  (aref gradient (cell-i cell) (cell-j cell)))
+
+(define-accessor gradient-of-direction (gradient cell)
+  (gradient-of-cell gradient (cell+ cell *current-cell*)))
+
+(defun set-gradient-of-cells (gradient list-cell value)
+  (dolist (cell list-cell)
+    (setf (gradient-of-cell gradient cell) value)))
+
+(defun unexplored-neighbours (gradient cell)
+  (let ((value (gradient-of-cell gradient cell)))
+    (flet ((explored-cell-p (cell)
+             (<= (gradient-of-cell gradient cell) (1+ value))))
+      (remove-if #'explored-cell-p (list-neighbours cell)))))
 
 ;;; Return an array with the distances to the point I,J in *MAP*.
-(defun compute-gradient (i j)
-  (let ((gradient (make-array-as *map* (array-total-size *map*)))
+(defun gradient (cell)
+  (let ((gradient (make-gradient))
         (frontier (make-queue)))
-    (setf (aref gradient i j) 0)
-    (enqueue (list i j) frontier)
+    (setf (gradient-of-cell gradient cell) 0)
+    (enqueue cell frontier)
     (until (null-queue-p frontier)
-      (destructuring-bind (i j) (dequeue frontier)
-        (let ((value (aref gradient i j)))
-          (let ((neighbours (list-gradient-neighbours gradient i j)))
-            (set-array-elements neighbours gradient (1+ value))
-            (enqueue-list neighbours frontier)))))
+      (let* ((cell (dequeue frontier))
+             (value (gradient-of-cell gradient cell))
+             (neighbours (unexplored-neighbours gradient cell)))
+        (set-gradient-of-cells gradient neighbours (1+ value))
+        (enqueue-list neighbours frontier)))
     gradient))
+
 
-
-(defun list-movements (i j &optional (null-movement-p t))
-  (loop for (di dj) in '((-1 0) (1 0) (0 -1) (0 1))
-        for ni = (+ i di)
-        for nj = (+ j dj)
-        when (and (valid-cell-p ni nj) (free-cell-p ni nj))
-        collect (list di dj) into result
-        finally
-           (if (and (null result) null-movement-p)
-               (return (list '(1 0)))
-               (return result))))
-
-(defun list-neighbours (i j)
-  (loop for (di dj) in '((-1 0) (1 0) (0 -1) (0 1))
-        for ni = (+ i di)
-        for nj = (+ j dj)
-        when (and (valid-cell-p ni nj) (free-cell-p ni nj))
-        collect (list ni nj)))
-
+;;; Find the element of LIST whose value of KEY is maximum according
+;;; to the order relationship PREDICATE.
 (defun optimizing (list predicate &key (key #'identity))
-  ;; TODO: Better implementation
-  (reduce (lambda (a b)
-            (if (funcall predicate (funcall key a) (funcall key b))
-                a
-                b))
-          list))
+  (let* ((max (first list))
+         (max-value (funcall key max)))
+    (dolist (x (rest list) max)
+      (let ((x-value (funcall key x)))
+        (when (funcall predicate x-value max-value)
+          (setf max x)
+          (setf max-value x-value))))))
 
+;;; Find the element of LIST minimizing KEY.
 (defun minimizing (list &key (key #'identity))
   (optimizing list #'< :key key))
 
+;;; Find the element of LIST maximizing KEY.
 (defun maximizing (list &key (key #'identity))
   (optimizing list #'> :key key))
 
 
-;;; Move to the cell nearest I,J according to the real distance.
-(defmacro destructuring-lambda (lambda-list &body body)
-  (let ((args (gensym)))
-    `(lambda (&rest ,args)
-       (destructuring-bind ,lambda-list ,args ,@body))))
+(defun move-to-first-free-cell ()
+  (move (random-direction)))
 
-(defun move-to (i j)
-  (let ((grad (compute-gradient i j))
-        (movs (list-movements (player-i *me*) (player-j *me*))))
-    (apply #'move
-           (minimizing (scramble movs)
-                       :key (destructuring-lambda ((di dj))
-                              (aref grad
-                                    (+ di (player-i *me*))
-                                    (+ dj (player-j *me*))))))))
-
+(defun move-to (cell)
+  (let* ((grad (gradient cell))
+         (directions (or (list-directions) (list (random-direction)))))
+    (move
+     (minimizing (scramble directions)
+                 :key (curry #'gradient-of-direction grad)))))
 
 (defun curry (fn &rest preargs)
   (lambda (&rest postargs)
@@ -221,6 +301,7 @@
 (defun rcurry (fn &rest postargs)
   (lambda (&rest preargs)
     (apply fn (append preargs postargs))))
+
 
 ;;; TODO: PROBAR
 (defun maparray (f array &rest others)
@@ -240,30 +321,25 @@
 (defun linearize-array (array)
   (make-array (array-total-size array) :displaced-to array))
 
-(defun compute-fill-algorithm (i j)
-  (let* ((grad (linearize-array (compute-gradient i j)))
+(defun compute-fill-algorithm (cell)
+  (let* ((grad (linearize-array (gradient cell)))
          (n (length grad)))
     (- n (count n grad))))
 
 
 ;;; Move to the maximizing fill area cell
 (defun move-to-maximize-fill ()
-  (apply #'move (maximizing (scramble (list-movements (player-i *me*) (player-j *me*)))
-                            :key (lambda (mov)
-                                   (let ((i (+ (player-i *me*) (first mov)))
-                                         (j (+ (player-j *me*) (second mov))))
-                                     (let ((value (compute-fill-algorithm i j)))
-                                       (prog1 value
-                                         (log "COMPUTE-FILL: ~d ~d => ~d" i j value))))))))
+  (move (maximizing (scramble (list-directions))
+                    :key (lambda (d)
+                           (compute-fill-algorithm (cell+ *current-cell* d))))))
 
 
 
 (defun move-to-maximize-openess ()
-  (apply #'move (maximizing (scramble (list-movements (player-i *me*) (player-j *me*)))
-                            :key (lambda (mov)
-                                   (let ((i (+ (player-i *me*) (first mov)))
-                                         (j (+ (player-j *me*) (second mov))))
-                                     (length (list-movements i j nil)))))))
+  (move (maximizing (scramble (list-directions))
+                    :key (lambda (d)
+                           (let ((*current-cell* (cell+ *current-cell* d)))
+                             (length (valid-directions)))))))
 
 
 ;;; LAS TECNICAS QUE VOY IMPLEMENTANDO ARRIBA SON INDIVIDUALES, Y EN
@@ -282,27 +358,21 @@
 ;;; ENCERRADO ES RELLENAR EL MAYOR AREA POSIBLE, ESTO ES HECHO CON
 ;;; METODOS TRADICIONALES.
 
-
 (defun main ()
   (log "------------------------------------------------------------")
   (log "New play started.")
-  (destructuring-bind (i j) (read-cords)
-    (set-cell-as-busy i j)
-    (setf *me* (make-player :i i :j j)))
-  (destructuring-bind (i j) (read-cords)
-    (set-cell-as-busy i j)
-    (setf *prey* (make-player :i i :j j)))
-  (log "  initial i: ~d: " (player-i *me*))
-  (log "  initial j: ~d: " (player-j *me*))
-  (log "  prey i: ~d: "    (player-i *prey*))
-  (log "  prey j: ~d: "    (player-j *prey*))
+  (setf *current-cell* (read-cords))
+  (set-cell-as-busy *current-cell*)
+  (setf *prey-cell* (read-cords))
+  (set-cell-as-busy *prey-cell*)
+  (log "  initial: ~a" *current-cell*)
+  (log "  prey: ~a" *prey-cell*)
   ;; Read walls
-  (destructuring-bind (n &optional ign) (read-cords)
-    (declare (ignore ign))
-    (loop repeat n do (apply #'set-cell-as-busy (read-cords))))
+  (loop repeat (cell-i (read-cords)) do (set-cell-as-busy (read-cords)))
+  ;; Game loop
   (let ((*random-state* (make-random-state t)))
     (loop
-      (move-to-maximize-openess)
-      (apply #'set-cell-as-busy (read-cords)))))
+      (move-to-maximize-fill)
+      (set-cell-as-busy (read-cords)))))
 
 ;;; boa ends here

@@ -311,6 +311,11 @@
         (j (cell-j cell)))
     (setf (aref *map* i j) 1)))
 
+(defun set-cell-as-free (cell)
+  (let ((i (cell-i cell))
+        (j (cell-j cell)))
+    (setf (aref *map* i j) 0)))
+
 (defun set-cells-as-busy (list-of-cells)
   (dolist (cell list-of-cells)
     (set-cell-as-busy cell)))
@@ -377,6 +382,13 @@
          (valid-directions cell)
          (list-directions cell)))))
 
+(defun random-neighbour (&optional (cell *current-cell*))
+  (let ((available (list-neighbours cell)))
+    (random-choice
+     (if (null available)
+         (valid-neighbours cell)
+         (list-neighbours cell)))))
+
 
 ;;; Gradient
 
@@ -398,6 +410,9 @@
     (flet ((explored-cell-p (cell)
              (<= (gradient-of-cell gradient cell) (1+ value))))
       (remove-if #'explored-cell-p (list-neighbours cell)))))
+
+(defun infinite-gradient-p (x)
+  (= x (array-total-size *map*)))
 
 ;;; Return an array with the distances to the point I,J in *MAP*.
 (defun gradient (cell &optional depth)
@@ -450,8 +465,8 @@
 
 (defun basin ()
   (maparray #'compare
-            (gradient *current-cell* 30)
-            (gradient *prey-cell* 30)))
+            (gradient *current-cell*)
+            (gradient *prey-cell*)))
 
 (defun basin-size ()
   (count -1 (linearize-array (basin))))
@@ -468,19 +483,19 @@
 
 (defun A* (initial goal h &optional max)
   (let ((frontier (make-heap 100))
-        (explored (copy-array *map*)))
+        (explored (make-array-as *map* :element-type 'bit :initial-element 0)))
     (labels (;; Mark a cell as explored.
-             (explore (cell)
+             (mark-as-explored (cell)
                (setf (aref explored (cell-i cell) (cell-j cell)) 1))
-             ;; Check if a cell has already been explored.
+             ;; Check if a path has already been explored.
              (exploredp (cell)
                (= 1 (aref explored (cell-i cell) (cell-j cell))))
              ;; List unexplored neighbours.
              (list-unexplored (cell)
                (remove-if #'exploredp (list-neighbours cell))))
       ;; Algorithm
-      (explore initial)
       (heap-insert frontier (list initial) 1)
+      (mark-as-explored initial)
       (until (or (empty-heap-p frontier))
         (let* ((path (heap-remove-min frontier))
                (cost (length path)))
@@ -488,8 +503,8 @@
             (return-from A* (reverse path)))
           (when (and max (> cost max))
             (return-from A* nil))
-          (explore (car path))
           (dolist (new (list-unexplored (car path)))
+            (mark-as-explored new)
             (heap-insert frontier
                          (cons new path)
                          (+ (1+ cost) (funcall h new)))))))))
@@ -497,14 +512,12 @@
 (defun pathfind (from to &optional max)
   (A* from to
       (lambda (cell)
-        (* 1.001                        ; tie braker
-           (+ (abs (- (cell-i cell) (cell-i to)))
-              (abs (- (cell-j cell) (cell-j to))))))
+        (+ (abs (- (cell-i cell) (cell-i to)))
+           (abs (- (cell-j cell) (cell-j to)))))
       max))
 
 (defun pathto (to &optional max)
   (pathfind *current-cell* to max))
-
 
 ;;; LAS TECNICAS QUE VOY IMPLEMENTANDO ARRIBA SON INDIVIDUALES, Y EN
 ;;; GENERAL SE TRATA DE OPTIMIZAR UNA FUNCION VALOR. TENER ESTO EN
@@ -530,6 +543,9 @@
 ;;; alejarse para elegir la tactica de juego a gran escala o mas
 ;;; detallada.
 
+
+
+
 (defun main ()
   (log "------------------------------------------------------------")
   (log "New play started.")
@@ -544,10 +560,26 @@
   ;; Game loop
   (let ((*random-state* (make-random-state t)))
     (loop
-      (move-to (or (second (pathto (cell 0 0)))
-                   (cell+ *current-cell* (random-direction))))
-      (set-cell-as-busy (read-cords)))))
+      (let ((grad2 (gradient *prey-cell*)))
+        (move (or (minimizing (scramble (list-directions))
+                              (lambda (direction)
+                                (+ (* 1000
+                                      (- (length (list-directions *prey-cell*))
+                                         (length (list-directions *current-cell*))))
+                                   (gradient-of-direction grad2 direction)
+                                   (let ((*current-cell* (cell+ *current-cell* direction)))
+                                     (set-cell-as-busy *current-cell*)
+                                     (- (count-if #'infinite-gradient-p
+                                                  (linearize-array
+                                                   (gradient *prey-cell* 50)))
+                                        (count-if #'infinite-gradient-p
+                                                  (linearize-array
+                                                   (gradient *current-cell* 50))))
+                                     (set-cell-as-free *current-cell*)))))
+                  (random-direction))))
+      ;; Update prey cell
+      (setf *prey-cell* (read-cords))
+      (set-cell-as-busy *prey-cell*))))
 
 
 ;;; boa ends here
-

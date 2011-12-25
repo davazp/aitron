@@ -180,6 +180,7 @@ lossp (player_t * player, int i, int j)
       player->loses++;
       return -1;
     }
+  return 0;
 }
 
 

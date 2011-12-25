@@ -352,11 +352,13 @@
 ;;; Assume in the context BODY that the action was to take DIRECTION.
 (defmacro hypotesis (direction &body body)
   `(let ((*current-cell* (cell+ *current-cell* ,direction)))
+     (log "Assume ~a~%" *current-cell*)
      (set-cell-as-busy *current-cell*)
      (unwind-protect ,@body
        (set-cell-as-free *current-cell*))))
 
 (defun move-to (to)
+  (log "Moving to ~a" to)
   (setf *current-cell* to)
   (write-cords *current-cell*)
   (set-cell-as-busy *current-cell*))
@@ -486,12 +488,20 @@
 
 (defvar *policy* 'hunter)
 
+(defun moving-1 (optimizer function)
+  (let ((d (list-directions)))
+    (if (null d)
+        (progn
+          (move (random-direction)))
+        (progn
+          (move (funcall optimizer d function))))))
+
 (defmacro moving (optimizer &body value-form)
   (let ((dirvar (gensym)))
-    `(move (,optimizer (or (list-directions) (random-direction))
-                       (lambda (,dirvar)
-                         (hypotesis ,dirvar
-                           ,@value-form))))))
+    `(moving-1 (function ,optimizer)
+               (lambda (,dirvar)
+                 (hypotesis ,dirvar
+                   ,@value-form)))))
 
 (defun update-policy ()
   (let ((path (pathto (random-neighbour *prey-cell*))))
@@ -504,13 +514,18 @@
        (setf *policy* 'hunter)))))
 
 (defun survive ()
+  (log "survive")
   (moving maximizing
-    (length (list-directions))))
+    (if (null (list-directions))
+        0
+        1)))
 
 (defun hunter ()
+  (log "hunter")
   (move-to (second (pathto (random-neighbour *prey-cell*)))))
 
 (defun killer ()
+  (log "kill")
   (let ((n 20))
     (moving minimizing
       (- (count n (linearize-array (gradient *prey-cell* n)))
@@ -525,6 +540,7 @@
     (run-policy)
     ;; Update prey cell
     (setf *prey-cell* (read-cords))
+    (log "Prey is moving to ~a" *prey-cell*)
     (set-cell-as-busy *prey-cell*)))
 
 (defun main ()

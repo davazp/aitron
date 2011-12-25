@@ -522,7 +522,8 @@
 
 (defun hunter ()
   (log "hunter")
-  (move-to (second (pathto (random-neighbour *prey-cell*)))))
+  (move-to (or (second (pathto (random-neighbour *prey-cell*)))
+               (random-neighbour))))
 
 (defun killer ()
   (log "kill")

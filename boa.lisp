@@ -88,6 +88,26 @@
     (apply fn (append preargs postargs))))
 
 
+;;; Find the element of LIST whose value of KEY is maximum according
+;;; to the order relationship PREDICATE.
+(defun optimizing (list predicate &key (key #'identity))
+  (if (null list)
+      nil
+      (let* ((max (first list))
+             (max-value (funcall key max)))
+        (dolist (x (rest list) max)
+          (let ((x-value (funcall key x)))
+            (when (funcall predicate x-value max-value)
+              (setf max x)
+              (setf max-value x-value)))))))
+
+;;; Find the element of LIST minimizing KEY.
+(defun minimizing (list key)
+  (optimizing list #'< :key key))
+
+;;; Find the element of LIST maximizing KEY.
+(defun maximizing (list key)
+  (optimizing list #'> :key key))
 
 ;;; Array functions
 
@@ -101,6 +121,12 @@
 ;;; dimensions.
 (defun make-array-as (array &rest args &key &allow-other-keys)
   (apply #'make-array (array-dimensions array) args))
+
+;;; Copy an array
+(defun copy-array (array)
+  (let ((copy (make-array-as array :element-type (array-element-type array))))
+    (dotimes (i (array-total-size copy) copy)
+      (setf (row-major-aref copy i) (row-major-aref array i)))))
 
 (defun linearize-array (array)
   (make-array (array-total-size array) :displaced-to array))
@@ -157,9 +183,7 @@
 ;;; Create a heap with a optional ESTIMATED SIZE.
 (defun make-heap (&optional (estimated-size 32))
   (make-array (list (* 2 estimated-size))
-              :element-type 'fixnum
-              :adjustable t
-              :fill-pointer 0))
+              :adjustable t :fill-pointer 0))
 
 (defun %heap-null-index-p (index)
   (zerop index))
@@ -225,7 +249,7 @@
           do (%heap-swap heap index parent))))
 
 ;;; Remove the element with the highest priority in the HEAP.
-(defun heap-remove-max (heap)
+(defun heap-remove-min (heap)
   (cond
     ((empty-heap-p heap) nil)
     (t
@@ -257,6 +281,10 @@
 
 (define-accessor cell-j (cell)
   (second cell))
+
+(defun cell= (cell1 cell2)
+  (and (= (cell-i cell1) (cell-i cell2))
+       (= (cell-j cell1) (cell-j cell2))))
 
 (defun cell+ (pos mov)
   (let ((i (cell-i pos))
@@ -314,11 +342,14 @@
 (defvar *directions*
   (list *up* *left* *down* *right*))
 
-;;; Move in the direction (DI, DJ).
-(defun move (d)
-  (setf *current-cell* (cell+ *current-cell* d))
+(defun move-to (to)
+  (setf *current-cell* to)
   (write-cords *current-cell*)
   (set-cell-as-busy *current-cell*))
+
+;;; Move in the direction (DI, DJ).
+(defun move (d)
+  (move-to (cell+ *current-cell* d)))
 
 (defun valid-direction-p (d &optional (cell *current-cell*))
   (valid-cell-p (cell+ cell d)))
@@ -334,7 +365,7 @@
   (remove-if-not #'free-cell-p (valid-neighbours cell)))
 
 (defun valid-directions (&optional (cell *current-cell*))
-  (remove-if-not (rcurry #'valid-directions cell) *directions*))
+  (remove-if-not (rcurry #'valid-direction-p cell) *directions*))
 
 (defun list-directions (&optional (cell *current-cell*))
   (remove-if-not (rcurry #'available-direction-p cell) *directions*))
@@ -385,32 +416,10 @@
     gradient))
 
 
-;;; Find the element of LIST whose value of KEY is maximum according
-;;; to the order relationship PREDICATE.
-(defun optimizing (list predicate &key (key #'identity))
-  (if (null list)
-      nil
-      (let* ((max (first list))
-             (max-value (funcall key max)))
-        (dolist (x (rest list) max)
-          (let ((x-value (funcall key x)))
-            (when (funcall predicate x-value max-value)
-              (setf max x)
-              (setf max-value x-value)))))))
-
-;;; Find the element of LIST minimizing KEY.
-(defun minimizing (list key)
-  (optimizing list #'< :key key))
-
-;;; Find the element of LIST maximizing KEY.
-(defun maximizing (list key)
-  (optimizing list #'> :key key))
-
-
 (defun move-to-first-free-cell ()
   (move (random-direction)))
 
-(defun move-to (cell)
+(defun move-to-go (cell)
   (let* ((grad (gradient cell))
          (directions (or (list-directions) (list (random-direction)))))
     (move
@@ -454,6 +463,49 @@
                         (basin-size))))))
 
 
+
+;;; A-star algorithm implementation
+
+(defun A* (initial goal h &optional max)
+  (let ((frontier (make-heap 100))
+        (explored (copy-array *map*)))
+    (labels (;; Mark a cell as explored.
+             (explore (cell)
+               (setf (aref explored (cell-i cell) (cell-j cell)) 1))
+             ;; Check if a cell has already been explored.
+             (exploredp (cell)
+               (= 1 (aref explored (cell-i cell) (cell-j cell))))
+             ;; List unexplored neighbours.
+             (list-unexplored (cell)
+               (remove-if #'exploredp (list-neighbours cell))))
+      ;; Algorithm
+      (explore initial)
+      (heap-insert frontier (list initial) 1)
+      (until (or (empty-heap-p frontier))
+        (let* ((path (heap-remove-min frontier))
+               (cost (length path)))
+          (when (cell= goal (car path))
+            (return-from A* (reverse path)))
+          (when (and max (> cost max))
+            (return-from A* nil))
+          (explore (car path))
+          (dolist (new (list-unexplored (car path)))
+            (heap-insert frontier
+                         (cons new path)
+                         (+ (1+ cost) (funcall h new)))))))))
+
+(defun pathfind (from to &optional max)
+  (A* from to
+      (lambda (cell)
+        (* 1.001                        ; tie braker
+           (+ (abs (- (cell-i cell) (cell-i to)))
+              (abs (- (cell-j cell) (cell-j to))))))
+      max))
+
+(defun pathto (to &optional max)
+  (pathfind *current-cell* to max))
+
+
 ;;; LAS TECNICAS QUE VOY IMPLEMENTANDO ARRIBA SON INDIVIDUALES, Y EN
 ;;; GENERAL SE TRATA DE OPTIMIZAR UNA FUNCION VALOR. TENER ESTO EN
 ;;; CUENTA PARA CUANDO REORGANIZE EL CODIGO, HACIENDOLO MUCHO MAS
@@ -478,8 +530,6 @@
 ;;; alejarse para elegir la tactica de juego a gran escala o mas
 ;;; detallada.
 
-
-
 (defun main ()
   (log "------------------------------------------------------------")
   (log "New play started.")
@@ -494,7 +544,10 @@
   ;; Game loop
   (let ((*random-state* (make-random-state t)))
     (loop
-      (move-to-maximize-basin)
+      (move-to (or (second (pathto (cell 0 0)))
+                   (cell+ *current-cell* (random-direction))))
       (set-cell-as-busy (read-cords)))))
 
+
 ;;; boa ends here
+

@@ -129,7 +129,9 @@
       (setf (row-major-aref copy i) (row-major-aref array i)))))
 
 (defun linearize-array (array)
-  (make-array (array-total-size array) :displaced-to array))
+  (make-array (array-total-size array)
+              :element-type (array-element-type array)
+              :displaced-to array))
 
 ;;; Map a function to the elements of an array.
 (defun maparray (f array &rest others)
@@ -347,6 +349,13 @@
 (defvar *directions*
   (list *up* *left* *down* *right*))
 
+;;; Assume in the context BODY that the action was to take DIRECTION.
+(defmacro hypotesis (direction &body body)
+  `(let ((*current-cell* (cell+ *current-cell* ,direction)))
+     (set-cell-as-busy *current-cell*)
+     (unwind-protect ,@body
+       (set-cell-as-free *current-cell*))))
+
 (defun move-to (to)
   (setf *current-cell* to)
   (write-cords *current-cell*)
@@ -430,55 +439,6 @@
         (enqueue-list neighbours frontier)))
     gradient))
 
-
-(defun move-to-first-free-cell ()
-  (move (random-direction)))
-
-(defun move-to-go (cell)
-  (let* ((grad (gradient cell))
-         (directions (or (list-directions) (list (random-direction)))))
-    (move
-     (minimizing (scramble directions)
-                 (curry #'gradient-of-direction grad)))))
-
-
-
-(defun compute-fill-algorithm (cell)
-  (let* ((grad (linearize-array (gradient cell)))
-         (n (length grad)))
-    (- n (count n grad))))
-
-
-;;; Move to the maximizing fill area cell
-(defun move-to-maximize-fill ()
-  (move (maximizing (scramble (list-directions))
-                    (lambda (d)
-                      (compute-fill-algorithm (cell+ *current-cell* d))))))
-
-
-
-(defun move-to-maximize-openess ()
-  (move (maximizing (scramble (list-directions))
-                    (lambda (d)
-                      (let ((*current-cell* (cell+ *current-cell* d)))
-                        (length (valid-directions)))))))
-
-(defun basin ()
-  (maparray #'compare
-            (gradient *current-cell*)
-            (gradient *prey-cell*)))
-
-(defun basin-size ()
-  (count -1 (linearize-array (basin))))
-
-(defun move-to-maximize-basin ()
-  (move (maximizing (scramble (list-directions))
-                    (lambda (d)
-                      (let ((*current-cell* (cell+ *current-cell* d)))
-                        (basin-size))))))
-
-
-
 ;;; A-star algorithm implementation
 
 (defun A* (initial goal h &optional max)
@@ -509,42 +469,63 @@
                          (cons new path)
                          (+ (1+ cost) (funcall h new)))))))))
 
+(defun distance (from to)
+  (+ (abs (- (cell-i from) (cell-i to)))
+     (abs (- (cell-j from) (cell-j to)))))
+
 (defun pathfind (from to &optional max)
   (A* from to
-      (lambda (cell)
-        (+ (abs (- (cell-i cell) (cell-i to)))
-           (abs (- (cell-j cell) (cell-j to)))))
+      (lambda (cell) (distance cell to))
       max))
 
 (defun pathto (to &optional max)
   (pathfind *current-cell* to max))
 
-;;; LAS TECNICAS QUE VOY IMPLEMENTANDO ARRIBA SON INDIVIDUALES, Y EN
-;;; GENERAL SE TRATA DE OPTIMIZAR UNA FUNCION VALOR. TENER ESTO EN
-;;; CUENTA PARA CUANDO REORGANIZE EL CODIGO, HACIENDOLO MUCHO MAS
-;;; GENERICO Y PERMITIENDO COMBINAR FUNCIONES DE VALORES COMODAMENTE,
-;;; QUIZA CON PARAMETROS.
-;;;
-;;; IGUALMENTE, APLICAR EL VALOR NO A VECINOS INMEDIATOS, SINO A UNA
-;;; VECINIDAD MAYOR Y/O PUNTOS ESTRATEGICOS DEL TABLERO.
-;;;
-;;; EN LA COMBINACION DE ESTAS ESTRATEGIAS (MINIMAX PAR CERCA),
-;;; INTERVIENE LA DISTANCIA COMO PARAMETRO TAMBIEN.
-;;;
-;;; IGUALMENTE, UNA VEZ EL OBJETIVO DE SABER CUANDO EL ENEMIGO ESTA
-;;; ENCERRADO ES RELLENAR EL MAYOR AREA POSIBLE, ESTO ES HECHO CON
-;;; METODOS TRADICIONALES.
+
+;;; Experimental
 
+(defvar *policy* 'hunter)
 
-;;; ESTRATEGIA DE REDUCCION DE LA DIMENSIONALIDAD:
-;;;
-;;; Generar particlas en celda (aleatoriamente?) y comprobar algunas
-;;; medidas intersantes para dichos puntos. Dichos puntos pueden
-;;; alejarse para elegir la tactica de juego a gran escala o mas
-;;; detallada.
+(defmacro moving (optimizer &body value-form)
+  (let ((dirvar (gensym)))
+    `(move (,optimizer (or (list-directions) (random-direction))
+                       (lambda (,dirvar)
+                         (hypotesis ,dirvar
+                           ,@value-form))))))
 
+(defun update-policy ()
+  (let ((path (pathto (random-neighbour *prey-cell*))))
+    (cond
+      ((null path)
+       (setf *policy* 'survive))
+      ((<= (length path) 10)
+       (setf *policy* 'killer))
+      (t
+       (setf *policy* 'hunter)))))
 
+(defun survive ()
+  (moving maximizing
+    (length (list-directions))))
 
+(defun hunter ()
+  (move-to (second (pathto (random-neighbour *prey-cell*)))))
+
+(defun killer ()
+  (let ((n 20))
+    (moving minimizing
+      (- (count n (linearize-array (gradient *prey-cell* n)))
+         (count n (linearize-array (gradient *current-cell* n)))))))
+
+(defun run-policy ()
+  (update-policy)
+  (funcall *policy*))
+
+(defun game-loop ()
+  (loop
+    (run-policy)
+    ;; Update prey cell
+    (setf *prey-cell* (read-cords))
+    (set-cell-as-busy *prey-cell*)))
 
 (defun main ()
   (log "------------------------------------------------------------")
@@ -559,27 +540,7 @@
   (loop repeat (cell-i (read-cords)) do (set-cell-as-busy (read-cords)))
   ;; Game loop
   (let ((*random-state* (make-random-state t)))
-    (loop
-      (let ((grad2 (gradient *prey-cell*)))
-        (move (or (minimizing (scramble (list-directions))
-                              (lambda (direction)
-                                (+ (* 1000
-                                      (- (length (list-directions *prey-cell*))
-                                         (length (list-directions *current-cell*))))
-                                   (gradient-of-direction grad2 direction)
-                                   (let ((*current-cell* (cell+ *current-cell* direction)))
-                                     (set-cell-as-busy *current-cell*)
-                                     (- (count-if #'infinite-gradient-p
-                                                  (linearize-array
-                                                   (gradient *prey-cell* 50)))
-                                        (count-if #'infinite-gradient-p
-                                                  (linearize-array
-                                                   (gradient *current-cell* 50))))
-                                     (set-cell-as-free *current-cell*)))))
-                  (random-direction))))
-      ;; Update prey cell
-      (setf *prey-cell* (read-cords))
-      (set-cell-as-busy *prey-cell*))))
+    (game-loop)))
 
 
 ;;; boa ends here

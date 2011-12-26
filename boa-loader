@@ -6,6 +6,6 @@
      ,@body))
 
 (ignore-output
-  (load "boa.lisp"))
+ (load "boa.fasl"))
 
 (boa:main)

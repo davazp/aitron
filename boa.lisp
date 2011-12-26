@@ -9,6 +9,8 @@
 
 (in-package :boa)
 
+(declaim (optimize speed))
+
 ;;; Logs, useful for debugging
 (defvar *logfile* #P"boa.log")
 

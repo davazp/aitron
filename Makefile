@@ -1,7 +1,7 @@
 .PHONY: clean
 
 tron: tron.c
-	gcc `pkg-config --libs --cflags sdl` $< -o $@
+	gcc -o $@ $< `pkg-config --libs --cflags sdl`
 
 clean:
 	rm tron

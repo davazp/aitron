@@ -59,12 +59,12 @@ draw_point (int i, int j, int color)
 void
 draw_zone (int mx, int my, int w, int h, int x, int y)
 {
-  int i, j;
+  int i, j, tile;
   for (i = 0; i < h; i++)
     {
       move (y + i, x);
       for (j = 0; j < w; j++)
-        addch (map[j+mx][i+my] ? 'x' : '-');
+        addch ((tile = map[j+mx][i+my]) ? tile : ' ');
     }
 }
 
@@ -115,7 +115,7 @@ create_player (const char *program)
 
 
 void
-prepare_player (player_t * player, int i, int j)
+prepare_player (player_t * player, int i, int j, int tile)
 {
   int pstdin[2];
   int pstdout[2];
@@ -151,7 +151,7 @@ prepare_player (player_t * player, int i, int j)
   player->fdread  = fdopen (pstdout[0], "r");
   player->i = i;
   player->j = j;
-  map[i][j] = 1;
+  map[i][j] = tile;
   write_cords (player, i, j);
 }
 
@@ -211,11 +211,11 @@ lossp (player_t * player, int i, int j)
 
 
 int
-move_player (player_t * player, int i, int j)
+move_player (player_t * player, int i, int j, int tile)
 {
   player->i = i;
   player->j = j;
-  map[i][j]=1;
+  map[i][j]=tile;
   return 0;
 }
 
@@ -324,7 +324,7 @@ walls (int n, player_t * p1, player_t * p2)
           while( c<20 &&
                  (i+di<0 || i+di >= N ||
                   j+dj<0 || j+dj >= N ||
-                  map[i+di][j+dj] == 1 ));
+                  map[i+di][j+dj] == '*' ));
           i += di;
           j += dj;
           if (c==20)
@@ -338,7 +338,7 @@ walls (int n, player_t * p1, player_t * p2)
           new_wall_p = 0;
         }
       draw_point (i, j, color);
-      map[i][j]=1;
+      map[i][j]='*';
       write_cords (p1, i, j);
       write_cords (p2, i, j);
       n--;
@@ -433,8 +433,8 @@ main (int argc, char * argv[])
 
       random_position (&p[0][0], &p[0][1]);
       random_position (&p[1][0], &p[1][1]);
-      prepare_player (player1, p[0][0], p[0][1]);
-      prepare_player (player2, p[1][0], p[1][1]);
+      prepare_player (player1, p[0][0], p[0][1], 'X');
+      prepare_player (player2, p[1][0], p[1][1], 'O');
       write_cords (player1, p[1][0], p[1][1]);
       write_cords (player2, p[0][0], p[0][1]);
 
@@ -469,8 +469,8 @@ main (int argc, char * argv[])
               finishp = 1;
             }
           /* Actualiza el mapa con los movimientos */
-          move_player (player1, p[0][0], p[0][1]);
-          move_player (player2, p[1][0], p[1][1]);
+          move_player (player1, p[0][0], p[0][1], 'X');
+          move_player (player2, p[1][0], p[1][1], 'O');
           turns++;
           /* Informa del ultimo movimiento de cada bot al otro */
           write_cords (player1, p[1][0], p[1][1]);

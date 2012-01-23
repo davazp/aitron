@@ -1,10 +1,15 @@
 /* Si usas emacs, puedes compilar con M-x compile */
 
+#include<curses.h>
 #include<stdio.h>
 #include<stdlib.h>
 #include<unistd.h>
 #include<signal.h>
 #include<SDL.h>
+
+#define MIN(a,b) ((a) < (b) ? (a) : (b))
+#define MAX(a,b) ((a) > (b) ? (a) : (b))
+#define LIM(x,min,max) MAX(min,MIN(x,max))
 
 /* Numero del lado del tablero (es cuadrado). */
 #define N 100
@@ -15,6 +20,8 @@
 /* Superficie SDL donde dibujamos la simulacion. */
 SDL_Surface * screen;
 
+int ncursesp = 0;
+
 /* Mapa de celdas ocupadas. No necesitamos distinguir entre celdas de
    un jugador y de otro, simplemente estan ocupadas y si chocas con
    ellas mueres. */
@@ -23,6 +30,7 @@ int map[N][N];
 
 /* Configuracion y estadisticas */
 unsigned int delay = 100;
+struct timespec delay_timespec = {0, 0};
 int graphicsp = 1;
 int plays = 1;
 int nwalls = 500;
@@ -48,6 +56,25 @@ draw_point (int i, int j, int color)
   SDL_FillRect (screen, &rect, color);
 }
 
+void
+draw_zone (int mx, int my, int w, int h, int x, int y)
+{
+  int i, j;
+  for (i = 0; i < h; i++)
+    {
+      move (y + i, x);
+      for (j = 0; j < w; j++)
+        addch (map[j+mx][i+my] ? 'x' : '-');
+    }
+}
+
+void draw_around (int mx, int my, int w, int h, int x, int y)
+{
+  int xoff = mx - (w / 2);
+  int yoff = my - (h / 2);
+  draw_zone (LIM (xoff, 0, 100 - w), LIM (yoff, 0, 100 - h), w, h, x, y);
+}
+
 typedef struct
 {
   char * name;
@@ -57,7 +84,6 @@ typedef struct
   int pid;
   int loses;
 } player_t ;
-
 
 void
 write_cords (player_t * player, int i, int j)
@@ -185,7 +211,7 @@ lossp (player_t * player, int i, int j)
 
 
 int
-move (player_t * player, int i, int j)
+move_player (player_t * player, int i, int j)
 {
   player->i = i;
   player->j = j;
@@ -340,10 +366,17 @@ main (int argc, char * argv[])
   int opt;
   const char * progname1;
   const char * progname2;
+  int p1_window_width;
+  int lines;
+  int columns;
 
-  while ((opt = getopt(argc, argv, "bd:n:w:")) != -1) {
+  while ((opt = getopt(argc, argv, "cbd:n:w:")) != -1) {
     switch (opt) {
       /* Establece el retraso entre movimiento y movimiento */
+    case 'c':
+      ncursesp = 1;
+      graphicsp = 0;
+      break;
     case 'd':
       delay = atoi (optarg);
       break;
@@ -380,6 +413,13 @@ main (int argc, char * argv[])
           exit (-1);
         }
     }
+  else if (ncursesp)
+    {
+      initscr ();
+      delay_timespec.tv_nsec = 1000000 * delay;
+      getmaxyx (stdscr, lines, columns);
+      p1_window_width = columns / 2;
+    }
 
   initialize_random();
 
@@ -405,8 +445,17 @@ main (int argc, char * argv[])
       while(!finishp)
         {
           SDL_Event event;
-          draw_point (player1->i, player1->j, 255);
-          draw_point (player2->i, player2->j, 65025);
+          if (graphicsp)
+            {
+              draw_point (player1->i, player1->j, 255);
+              draw_point (player2->i, player2->j, 65025);
+            }
+          else if (ncursesp)
+            {
+              draw_around (player1->i, player1->j, p1_window_width, lines, 0, 0);
+              draw_around (player2->i, player2->j, columns - p1_window_width, lines, p1_window_width, 0);
+              refresh ();
+            }
           /* Lee los siguientes movimientos de cada bot */
           read_cords (player1, &p[0][0], &p[0][1]);
           read_cords (player2, &p[1][0], &p[1][1]);
@@ -420,8 +469,8 @@ main (int argc, char * argv[])
               finishp = 1;
             }
           /* Actualiza el mapa con los movimientos */
-          move (player1, p[0][0], p[0][1]);
-          move (player2, p[1][0], p[1][1]);
+          move_player (player1, p[0][0], p[0][1]);
+          move_player (player2, p[1][0], p[1][1]);
           turns++;
           /* Informa del ultimo movimiento de cada bot al otro */
           write_cords (player1, p[1][0], p[1][1]);
@@ -441,6 +490,11 @@ main (int argc, char * argv[])
               SDL_Flip (screen);
               SDL_Delay (delay);
             }
+          else if (ncursesp)
+            {
+              nanosleep (&delay_timespec, NULL);
+              refresh ();
+            }
         }
       finish_player (player1);
       finish_player (player2);
@@ -458,6 +512,8 @@ main (int argc, char * argv[])
 
   if (graphicsp)
     SDL_Quit ();
+  else if (ncursesp)
+    endwin ();
 
   return 0;
 }

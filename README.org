@@ -2,7 +2,6 @@
 #+startup: showall
 
 * AI Tron
-  (descripción)
 
 *** Usando el simulador
     Compilas simplemente con `make'. Se creará un ejecutable
@@ -11,6 +10,7 @@
 
     Además, puedes usar las siguientes opciones:
 
+    #+BEGIN_EXAMPLE
     -b        NO SDL, hace la simulación y saca estadísticas,
               sin mostrar la partida gráficamente.
 
@@ -21,14 +21,18 @@
 
     -w N      Especifica cuantas celdas serán muros. El valor
               por defecto es 500.
+    #+END_EXAMPLE
 
     Ejemplos de uso:
 
+    #+BEGIN_SRC 
     ./tron dummy cazador
     ./tron -n 20 -d 0 cobarde cobarde
     ./tron -n 10 -d 100 -w 0 cazador cobarde
     ./tron -n 10 -d 100 -w 2000 cazador cobarde
     ./tron -b -n 200 cazador cobarde
+    #+END_SRC
+
 
 *** Escribiendo un bot
     El tamaño del mapa donde se mueve tron es de 100x100 celdas. Los
@@ -61,6 +65,7 @@
     línea es leida desde entrada y > que la línea es escrita en la
     salida.
 
+#+BEGIN_EXAMPLE
 <   10 23               \ Tus coordenadas
 <   15 23               \ Coordenadas de tu adversario.
 <   5 0                 \ Hay 5 celdas de muros
@@ -74,3 +79,4 @@
 >   10 25               \ Tu mueves hacia la derecha
 <   13 23               \ El enemigo se mueve hacia arriba
     ...
+#+END_EXAMPLE
